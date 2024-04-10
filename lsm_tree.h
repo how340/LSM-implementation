@@ -6,6 +6,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <cmath>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -14,20 +15,7 @@
 #include "key_value.h"
 #include "run.h"
 
-/* Functions that the LSM tree level should have.
 
-1. Merge runs within levels based on merge policy.
-
-2. conduct basic query functionalities.
-
-3. maintain fence pointer, bloom filters, and file structures for LSM tree
-
-4. be an intermediate between the buffer level and the on-disk level.
-
-5.
-
-
-*/
 
 // This will be changed to a key and some type of pointer that can point to
 // specific location in the file system.
@@ -42,14 +30,11 @@
 class LSM_Tree {
   int buffer_size;
   BufferLevel* in_mem;  // Think about destructor here.
-  int bloom_bits_per_entry;
+  int FPR;
   int level_ratio;
-  // const int SAVE_MEMORY_PAGE_SIZE = 512;
-  int mode;  // determine whether we run the baseline LSM implementation or
-             // optimized version. 0 means optimized version, 1 is un-optimized
 
  public:
-  LSM_Tree(size_t bits_ratio, size_t level_ratio, size_t buffer_size, int mode);
+  LSM_Tree(float FPR, size_t level_ratio, size_t buffer_size);
   ~LSM_Tree();
 
   struct Level_node {
@@ -68,12 +53,13 @@ class LSM_Tree {
   Level_Node* root;
 
   void put(KEY_t key, VALUE_t val);
+  void put(Entry_t entry);//overload for loading saved memory. 
   std::unique_ptr<Entry_t> get(KEY_t key);
   std::vector<Entry_t> range(KEY_t lower, KEY_t upper);
   void del(KEY_t key);
   std::vector<Entry_t> merge(Level_Node* cur);
 
-  Run create_run(std::vector<Entry_t>);
+  Run create_run(std::vector<Entry_t> buffer, int current_level);
   void create_bloom_filter(BloomFilter* bloom, const std::vector<Entry_t>& vec);
   void save_to_memory(std::string filename, std::vector<KEY_t>* fence_pointer,
                       std::vector<Entry_t>& vec);
@@ -82,6 +68,10 @@ class LSM_Tree {
   void exit_save_memory();
   void level_meta_save();
   void exit_save();
+
+  // Loading files on launch.
+  void load_memory();
+  void reconstruct_file_structure(std::ifstream& meta);
 
   // helper functions
   void print();

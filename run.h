@@ -13,8 +13,7 @@ class Run {
     std::vector<KEY_t>* fence_pointers;
     std::string file_location; // storage location of the stored binary file
 
-    const int LOAD_MEMORY_PAGE_SIZE = SAVE_MEMORY_PAGE_SIZE/64 + SAVE_MEMORY_PAGE_SIZE;
-    const int BOOL_BYTE_CNT = SAVE_MEMORY_PAGE_SIZE/64;
+
 
 public:
     Run(std::string file_name, BloomFilter* bloom, std::vector<KEY_t>* fence);
