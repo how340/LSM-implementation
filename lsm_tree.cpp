@@ -41,6 +41,7 @@ void LSM_Tree::put(KEY_t key, VALUE_t val)
     }
 }
 
+
 void LSM_Tree::put(Entry_t entry)
 {
     int insert_result;
@@ -48,17 +49,6 @@ void LSM_Tree::put(Entry_t entry)
     Level_Node *cur = root;
 
     insert_result = in_mem->insert(entry);
-
-    if (insert_result == -1)
-    {
-        buffer = LSM_Tree::merge(cur);
-        Run merged_run = create_run(buffer, cur->level);
-        cur->run_storage.push_back(merged_run);
-
-        // clear buffer and ins ert again.
-        in_mem->clear_buffer();
-        in_mem->insert(entry);
-    }
 }
 
 /**
@@ -217,11 +207,18 @@ void LSM_Tree::del(KEY_t key)
     }
 }
 
-// merge policy for combining different
 /**
- * LSM_Tree
+ * LSM_Tree::merge()
+ * This function implements the naive merge policy for the LSM tree's tiered levels.
+ * The funciton leaves the cur pointer a the level before the lazy cutoff.
+ * The merge policy follows the idea of partial compaction.
+ * For the tiered level, The naive merge is implemented.
  *
- * @param  {LSM_Tree::Level_Node*} cur :
+ * For the leveled level, this means that a block of the run(probably the oldest block)
+ * is flushed down.
+ * @param  {LSM_Tree::Level_Node*} cur : Pointer to keep track which level to merge to.
+ *                                        This pointer is used in later functions to correctly
+ *                                        insert the run into a desired location.
  * @return {std::vector<Entry_t>}      :
  */
 std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *cur)
@@ -301,6 +298,18 @@ std::vector<Entry_t> LSM_Tree::merge(LSM_Tree::Level_Node *cur)
     return ret;
 }
 
+// The leveled level should be designed as smaller fragments in sorted order.
+// This way, when merging, we can just deal with the smaller merges. 
+void LSM_Tree::partial_merge(Level_Node *cur)
+{
+    std::vector<Entry_t> buffer = load_full_file(cur->run_storage[0].get_file_location(), cur->run_storage[0].return_fence());
+
+    cur = cur->next_level; // move into the leveled levels
+    size_t last_level_size = cur->max_size;
+    // always insert, then check if we are above threshold. Keep cascading until we no longer match the threshold. 
+
+}
+
 // this function will save the in-memory data and maintain file structure for
 // data persistence.
 void LSM_Tree::exit_save()
@@ -333,8 +342,18 @@ Run LSM_Tree::create_run(std::vector<Entry_t> buffer, int current_level)
     One design choice is to dictate what FPR that we are comfortable with, which
     */
 
-    int bits_per_entry = ceil(-log(FPR * level_ratio * current_level) / (pow(log(2), 2))); // take ceiling to be safe
+    float cur_FPR; 
+    if (current_level == 0){
+        cur_FPR = FPR;
+    } else {
+        cur_FPR = FPR * pow(level_ratio, current_level);
+    }
+    float bits_per_entry = ceil(-(log(cur_FPR) / (pow(log(2), 2)))); // take ceiling to be safe
+
+    std::cout << "Current FPR: " << cur_FPR << "; " << "bits_per_entry" <<  bits_per_entry << std::endl; 
+
     BloomFilter *bloom = new BloomFilter(bits_per_entry);
+
     std::vector<KEY_t> *fence = new std::vector<KEY_t>;
 
     LSM_Tree::create_bloom_filter(bloom, buffer);
@@ -365,7 +384,8 @@ void LSM_Tree::create_bloom_filter(BloomFilter *bloom, const std::vector<Entry_t
  * @param  {std::string} filename              : The file_location for the
  * stored binary file.
  * @param  {std::vector<KEY_t>*} fence_pointer : Pointer to a vector containing
- * the fence pointers
+ *                                               the fence pointers. This is nullptr
+ *                                               when used by the exit_save_memory.
  * @param  {std::vector<Entry_t>} vec          : a vector containing entries.
  */
 void LSM_Tree::save_to_memory(std::string filename, std::vector<KEY_t> *fence_pointer, std::vector<Entry_t> &vec)
@@ -452,8 +472,9 @@ void LSM_Tree::save_to_memory(std::string filename, std::vector<KEY_t> *fence_po
 }
 
 /**
- * LSM_Tree
- *
+ * LSM_Tree::exit_save_memory()
+ * This functions saves the key/values stored in the buffer to file after
+ * exiting system.
  */
 void LSM_Tree::exit_save_memory()
 {
@@ -595,7 +616,7 @@ void LSM_Tree::load_memory()
     memory.close();
 }
 
-void LSM_Tree::reconstruct_file_structure(std::ifstream& meta)
+void LSM_Tree::reconstruct_file_structure(std::ifstream &meta)
 {
     std::string line;
     Level_Node *cur = root;
@@ -645,6 +666,58 @@ void LSM_Tree::reconstruct_file_structure(std::ifstream& meta)
         }
     }
     std::cout << "meta load complete!" << std::endl;
+}
+
+std::vector<Entry_t> LSM_Tree::load_full_file(std::string file_location, std::vector<KEY_t> fence_pointers)
+{   
+    // read-in the the oldest run at the level.
+    std::ifstream file(file_location, std::ios::binary);
+
+    if (!file.is_open())
+        throw std::runtime_error("Unable to open file for writing");
+
+    Entry_t entry;
+    std::vector<Entry_t> buffer;
+
+    file.seekg(0, std::ios::end);
+    size_t fileSize = file.tellg();
+    size_t read_size;
+    // read in the run's information.
+    for (int i = 0; i < fence_pointers.size(); i++)
+    {
+        
+        if (i * LOAD_MEMORY_PAGE_SIZE > fileSize)
+        {
+            read_size = fileSize - (i-1) * LOAD_MEMORY_PAGE_SIZE;
+        }
+        else
+        {
+            read_size = LOAD_MEMORY_PAGE_SIZE;
+        }
+
+        // read in del flags: starting * page_size -> begining of page
+        uint64_t result;
+        file.seekg(i * LOAD_MEMORY_PAGE_SIZE + read_size - BOOL_BYTE_CNT, std::ios::beg);
+        file.read(reinterpret_cast<char *>(&result), BOOL_BYTE_CNT);
+        std::bitset<64> del_flag_bitset(result);
+        file.seekg(0, std::ios::beg);
+
+        file.seekg(i * LOAD_MEMORY_PAGE_SIZE, std::ios::beg);
+
+        int idx = 0;
+        while (read_size > BOOL_BYTE_CNT)
+        { 
+            file.read(reinterpret_cast<char *>(&entry.key), sizeof(entry.key));
+            file.read(reinterpret_cast<char *>(&entry.val), sizeof(entry.val));
+
+            entry.del = del_flag_bitset[63 - idx];
+            buffer.push_back(entry);
+
+            read_size = read_size - sizeof(entry.key) - sizeof(entry.val);
+            idx++;
+        }
+    }
+    return buffer;
 }
 
 void LSM_Tree::print()

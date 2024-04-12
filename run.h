@@ -13,10 +13,13 @@ class Run {
     std::vector<KEY_t>* fence_pointers;
     std::string file_location; // storage location of the stored binary file
 
+    int size; // # of key/value pairs in the run. 
+    int max_size; 
 
 
 public:
     Run(std::string file_name, BloomFilter* bloom, std::vector<KEY_t>* fence);
+    Run(std::string file_name, BloomFilter* bloom, std::vector<KEY_t>* fence, int max);
     ~Run();
 
     int search_fence(KEY_t key);
@@ -29,6 +32,8 @@ public:
     // return pointers to the underlying data structures
     std::vector<KEY_t> return_fence();
     BloomFilter return_bloom();
+
+    int return_size();
 };
 
 

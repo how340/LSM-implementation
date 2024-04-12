@@ -19,6 +19,14 @@ Run::Run(std::string file_name, BloomFilter *bloom_filter,
   fence_pointers = fence;
 }
 
+Run::Run(std::string file_name, BloomFilter *bloom_filter, std::vector<KEY_t> *fence, int max)
+{
+  file_location = file_name;
+  bloom = bloom_filter;
+  fence_pointers = fence;
+  max_size = max; 
+}
+
 Run::~Run(void) {}
 
 bool Run::search_bloom(KEY_t key) { return bloom->is_set(key); }
@@ -107,9 +115,7 @@ std::unique_ptr<Entry_t> Run::disk_search(int starting_point,
   return nullptr;  // return null if we couldn't find the result.
 }
 
-// TODO: Need to implement range_disk_search after updating the file formatting.
-// TODO: this function can definitely be reformatted. Probably implement a
-// function called page search.
+// Logic here should be updated. 
 std::vector<Entry_t> Run::range_disk_search(KEY_t lower, KEY_t upper) {
   std::vector<Entry_t> ret;
   std::ifstream file(file_location, std::ios::binary);
@@ -247,3 +253,8 @@ std::vector<Entry_t> Run::range_disk_search(KEY_t lower, KEY_t upper) {
 std::vector<KEY_t> Run::return_fence() { return *fence_pointers; }
 
 BloomFilter Run::return_bloom() { return *bloom; }
+
+int Run::return_size()
+{
+    return size;
+}

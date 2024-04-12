@@ -131,18 +131,18 @@ LSM_Tree *meta_load_save()
 
     // read in the lsm tree meta data (in first line)
     int FPR, level_ratio, buffer_size, mode;
-    std::string a, b, c, d;
+    std::string a, b, c;
     if (std::getline(meta, line))
     {
         std::istringstream iss(line);
-        if (!(iss >> a >> b >> c >> d))
+        if (!(iss >> a >> b >> c ))
         {
             std::cerr << "error loading lsm isntance meta data" << std::endl;
         };
         FPR = std::stoi(a);
         level_ratio = std::stoi(b);
         buffer_size = std::stoi(c);
-        mode = std::stoi(d);
+
     }
     else
     {
@@ -188,7 +188,7 @@ int main(int argc, char *argv[])
         std::cout << "Some data storage files are missing. Database will overwrite "
                      "all past data."
                   << std::endl;
-        lsm_tree = new LSM_Tree(10, 3, 100000); // 1 mil integer buffer size. MAKING THIS # for testing haha.
+        lsm_tree = new LSM_Tree(0.0001, 3, 100000); // 1 mil integer buffer size. MAKING THIS # for testing haha.
     }
 
     /*
